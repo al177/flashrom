@@ -131,6 +131,21 @@ static int send_buf(struct ftdi_context *ftdic, const unsigned char *buf,
 	return 0;
 }
 
+static int ft2232_spi_shutdown(void *data)
+{
+
+	unsigned char buf[512];
+	struct ftdi_context *ftdic = &ftdic_context;
+
+	// Turn off TRST and SRST output drivers on Bus Blaster
+	buf[0] = 0x82;
+	buf[1] = 0x0f;
+	buf[2] = 0x00;
+	send_buf(ftdic, buf, 3);
+
+	return 0;
+}
+
 static int get_buf(struct ftdi_context *ftdic, const unsigned char *buf,
 		   int size)
 {
@@ -429,7 +444,18 @@ int ft2232_spi_init(void)
 		goto ftdi_err;
 	}
 
+	// Assert TRST and SRST to hold the target in reset while programming
+	buf[0] = 0x82;	// SET_BITS_HIGH
+	buf[1] = 0x00;	// Enables on, outputs low for TRST and SRST
+	buf[2] = 0x0f;  // OE for enables and outputs
+	if (send_buf(ftdic, buf, 3)) {
+		ret = -8;
+		goto ftdi_err;
+	}
+
 	register_spi_master(&spi_master_ft2232);
+	if (register_shutdown(ft2232_spi_shutdown, NULL))
+		return 1;
 
 	return 0;
 
@@ -527,5 +553,7 @@ static int ft2232_spi_send_command(struct flashctx *flash,
 
 	return failed ? -1 : 0;
 }
+
+
 
 #endif
